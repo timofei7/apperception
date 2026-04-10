@@ -1,0 +1,54 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "apperception",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "migrations": [
+    {
+      "new_sqlite_classes": ["ApperceptionMCP"],
+      "tag": "v1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "ApperceptionMCP",
+        "name": "MCP_OBJECT"
+      }
+    ]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+  "migrations_dir": "migrations",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "apperception",
+      "database_id": "YOUR_D1_DATABASE_ID"
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "VECTORIZE",
+      "index_name": "apperception"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "GITHUB_REPO_OWNER": "YOUR_GITHUB_USERNAME",
+    "GITHUB_REPO_NAME": "YOUR_DATA_REPO_NAME"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "dev": {
+    "port": 8788
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "apperception": {
+      "command": "node",
+      "args": ["/path/to/apperception/server/dist/index.js"]
+    }
+  }
+}

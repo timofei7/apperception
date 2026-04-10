@@ -1,0 +1,15 @@
+# Apperception configuration
+repo_path: .
+surfaces:
+  - code
+  - desktop
+  - cowork
+  - web
+  - mobile
+identity:
+  soul: SOUL.md
+  user: USER.md
+  identity: IDENTITY.md
+  style: STYLE.md
+dream:
+  schedule: "0 2 * * *"  # 2:00 AM daily

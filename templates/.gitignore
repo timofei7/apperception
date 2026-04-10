@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.soul/index.sqlite
+.soul/retrievals.jsonl
+.soul/logs/
+.DS_Store
