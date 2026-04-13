@@ -81,7 +81,8 @@ export class GitHubStorage {
   }
 
   private validatePath(path: string): string {
-    const normalized = path.replace(/\\/g, "/");
+    if (path.includes('\0')) throw new Error("Null byte in path");
+    const normalized = decodeURIComponent(path).replace(/\\/g, "/");
     if (normalized.startsWith("/") || normalized.includes("..")) {
       throw new Error(`Path traversal blocked: ${path}`);
     }

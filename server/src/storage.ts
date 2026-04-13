@@ -1,5 +1,5 @@
 import { readFile, writeFile, appendFile, readdir, stat, mkdir } from "fs/promises";
-import { join, relative, dirname } from "path";
+import { join, relative, dirname, resolve } from "path";
 import { existsSync } from "fs";
 import { simpleGit, SimpleGit } from "simple-git";
 import { SearchIndex } from "./search.js";
@@ -61,8 +61,9 @@ export class LocalStorage implements SoulStorage {
   }
 
   private resolve(path: string): string {
-    const resolved = join(this.repoPath, path);
-    if (!resolved.startsWith(this.repoPath + "/") && resolved !== this.repoPath) {
+    if (!path) throw new Error("Path cannot be empty");
+    const resolved = resolve(this.repoPath, path);
+    if (!resolved.startsWith(this.repoPath + "/")) {
       throw new Error(`Path traversal blocked: ${path}`);
     }
     return resolved;

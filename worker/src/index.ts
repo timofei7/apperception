@@ -448,6 +448,11 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
     const folder = path.split("/")[0] || "root";
 
     // Clear old chunks from D1
+    // Clear old FTS entries before deleting chunks
+    const oldChunks = await this.env.DB.prepare("SELECT id FROM chunks WHERE file = ?").bind(path).all<{ id: number }>();
+    for (const old of oldChunks.results ?? []) {
+      await this.env.DB.prepare("DELETE FROM chunks_fts WHERE rowid = ?").bind(old.id).run();
+    }
     await this.env.DB.prepare("DELETE FROM chunks WHERE file = ?").bind(path).run();
 
     // Insert new chunks into D1
