@@ -507,7 +507,7 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
   }
 }
 
-export default new OAuthProvider({
+const provider = new OAuthProvider({
   apiHandler: ApperceptionMCP.serve("/mcp"),
   apiRoute: "/mcp",
   authorizeEndpoint: "/authorize",
@@ -515,3 +515,12 @@ export default new OAuthProvider({
   defaultHandler: GitHubHandler as any,
   tokenEndpoint: "/token",
 });
+
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const ip = request.headers.get("CF-Connecting-IP");
+    const path = new URL(request.url).pathname;
+    console.log(`[apperception] ${request.method} ${path} from ${ip}`);
+    return provider.fetch(request, env, ctx);
+  },
+};

@@ -261,14 +261,18 @@ Claude Desktop, claude.ai web, and mobile all share the same remote integration:
 2. Enter the MCP server URL: `https://YOUR_WORKER.workers.dev/mcp`
 3. Authorize with GitHub when prompted
 
-Then add this to your **Preferences** (Settings → Preferences) or Project instructions:
+Then add this to your **Personal Preferences** (Settings → Profile → Personal Preferences) or Project instructions.
+
+> **Why this matters:** Claude Code uses a SessionStart hook to load identity automatically. claude.ai web/desktop/mobile has no such hook — Claude will not call `soul_context` on its own. Without this preference text, every new conversation starts without identity, memory, or knowledge of who you are. The instruction below forces Claude to bootstrap Apperception at the start of every conversation.
 
 ```
 You have access to an MCP server called "apperception" — your persistent memory.
 
-Before responding, call `soul_context` with surface "web". This loads your
-identity (SOUL.md), the user's profile (USER.md), and recent memory.
-The SOUL.md defines who you are — follow it.
+Before answering ANY message — even trivial ones like "hi" or a quick question —
+call `soul_context` with the appropriate surface ("web", "desktop", or "mobile").
+This is not optional. It loads your identity (SOUL.md), the user's profile (USER.md),
+style guide (STYLE.md), and recent memory. The SOUL.md defines who you are — follow it.
+If you skip this step, you are responding as a generic assistant, not as yourself.
 
 During the session:
 - Call `soul_remember` when you need context about past work or decisions.
@@ -277,7 +281,7 @@ During the session:
   `memory/{type}_{topic}.md` (types: user, feedback, project, reference).
 
 When the user says "summarize and reflect":
-- Call `soul_append` with surface "web" to log the session summary.
+- Call `soul_append` with the appropriate surface to log the session summary.
 ```
 
 #### Seed the search index
