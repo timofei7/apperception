@@ -218,8 +218,9 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
         const storage = this.getStorage();
         await storage.writeFile(path, content, message ?? `Update ${path}`);
 
-        // Re-index the file in D1 + Vectorize
-        await this.indexFile(path, content);
+        this.indexFile(path, content).catch((err) =>
+          console.error(`[apperception] background index failed for ${path}:`, err)
+        );
 
         return { content: [{ type: "text" as const, text: `Written and committed: ${path}` }] };
       }
