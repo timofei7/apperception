@@ -76,12 +76,29 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
           }
         }
 
+        const now = new Date();
+        const currentDateTime = now.toLocaleString("en-US", {
+          timeZone: "America/New_York",
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        });
+
         const output = Object.entries(files)
           .map(([name, content]) => `--- ${name} ---\n${content}`)
           .join("\n\n");
 
+        const header =
+          `Current date and time (Eastern): ${currentDateTime}\n` +
+          `Please remember to check current date and time before doing any calendar or scheduling operations.\n\n`;
+
         return {
-          content: [{ type: "text" as const, text: output || "No files loaded." }],
+          content: [{ type: "text" as const, text: header + (output || "No files loaded.") }],
         };
       }
     );

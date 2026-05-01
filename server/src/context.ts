@@ -46,7 +46,22 @@ export async function loadSoulContext(
     0
   );
 
+  const now = new Date();
+  const currentDateTime = now.toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
   return (
+    `Current date and time (Eastern): ${currentDateTime}\n` +
+    `Please remember to check current date and time before doing any calendar or scheduling operations.\n\n` +
     `Loaded ${fileList.length} files (${totalChars} chars) for surface "${surface}":\n` +
     fileList.map((f) => `- ${f}`).join("\n") +
     "\n\n" +
