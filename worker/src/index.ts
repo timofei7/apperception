@@ -21,6 +21,41 @@ function randomId(): string {
   return crypto.randomUUID();
 }
 
+type Hit = { file: string; excerpt: string; score: number; date?: string };
+type FusedHit = Hit & { rrf: number; sources: string[] };
+
+/** Reciprocal Rank Fusion constant. Dampens the weight of lower ranks; 60 is the
+ * value from the original RRF paper and the de-facto default. */
+const RRF_K = 60;
+
+/**
+ * Fuse two independently-ranked result lists by Reciprocal Rank Fusion.
+ * FTS scores (BM25 rank magnitude, ~4-8) and Vectorize cosine scores (0-1) live on
+ * incompatible scales, so ranking them on a shared raw-score axis lets FTS evict
+ * every vector hit whenever it fills the limit — defeating hybrid search. RRF
+ * ignores raw scores and fuses by RANK POSITION, so each modality contributes on
+ * equal terms and a strong vector-only match can still surface.
+ */
+function fuseByRRF(fts: Hit[], vec: Hit[], limit: number): FusedHit[] {
+  const byKey = new Map<string, FusedHit>();
+  const add = (list: Hit[], source: string) => {
+    list.forEach((r, rank) => {
+      const key = `${r.file}:${r.excerpt.slice(0, 50)}`;
+      const contribution = 1 / (RRF_K + rank);
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.rrf += contribution;
+        if (!existing.sources.includes(source)) existing.sources.push(source);
+      } else {
+        byKey.set(key, { ...r, rrf: contribution, sources: [source] });
+      }
+    });
+  };
+  add(fts, "fts");
+  add(vec, "vec");
+  return [...byKey.values()].sort((a, b) => b.rrf - a.rrf).slice(0, limit);
+}
+
 export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props> {
   server = new McpServer({
     name: "apperception",
@@ -152,29 +187,28 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
           .describe("Folders to search"),
       },
       async ({ query, limit, scope }) => {
-        // Hybrid search: FTS from D1 + vector from Vectorize
-        const ftsResults = await this.ftsSearch(query, scope, limit);
-        const vecResults = await this.vectorSearch(query, scope, limit);
+        // Hybrid search: FTS (D1) + vector (Workers AI embedding + Vectorize),
+        // run concurrently and fused by Reciprocal Rank Fusion (see fuseByRRF —
+        // the two score scales are incompatible and must not be compared directly).
+        const t0 = Date.now();
+        const [ftsResults, vecResults] = await Promise.all([
+          this.ftsSearch(query, scope, limit),
+          this.vectorSearch(query, scope, limit),
+        ]);
+        const searchMs = Date.now() - t0;
 
-        // Merge and deduplicate, preferring higher scores
-        const merged = new Map<string, { file: string; excerpt: string; score: number; date?: string }>();
+        const results = fuseByRRF(ftsResults, vecResults, limit);
 
-        for (const r of ftsResults) {
-          merged.set(`${r.file}:${r.excerpt.slice(0, 50)}`, r);
-        }
-        for (const r of vecResults) {
-          const key = `${r.file}:${r.excerpt.slice(0, 50)}`;
-          const existing = merged.get(key);
-          if (!existing || r.score > existing.score) {
-            merged.set(key, r);
-          }
-        }
+        // [instrumentation] Attribute latency: compare search_ms and handler_done
+        // ms below against the tail's wallTime — if wallTime >> handler_done, the
+        // 20-31s hang lives in the SDK transport / cancelled waitUntil, not here.
+        console.log(
+          `[apperception] remember search_ms=${searchMs} fts_n=${ftsResults.length} vec_n=${vecResults.length} fused_n=${results.length} qlen=${query.length}`
+        );
 
-        const results = [...merged.values()]
-          .sort((a, b) => b.score - a.score)
-          .slice(0, limit);
-
-        // Passive retrieval logging
+        // Passive retrieval logging (fire-and-forget GitHub write). Timing/failure
+        // logged inside appendRetrievalLog to reveal whether this is the work
+        // cancelled at the 30s waitUntil limit under concurrency.
         const storage = this.getStorage();
         const entry: RetrievalLogEntry = {
           id: randomId(),
@@ -185,6 +219,8 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
         };
         storage.appendRetrievalLog(entry).catch(() => {});
 
+        console.log(`[apperception] remember handler_done ms=${Date.now() - t0}`);
+
         if (results.length === 0) {
           return { content: [{ type: "text" as const, text: `No results found for: "${query}"` }] };
         }
@@ -192,7 +228,7 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
         const formatted = results
           .map(
             (r) =>
-              `**${r.file}** (score: ${r.score.toFixed(2)}${r.date ? `, date: ${r.date}` : ""})\n${r.excerpt}\n`
+              `**${r.file}** (${r.sources.join("+")}, score ${r.score.toFixed(2)}, rrf ${r.rrf.toFixed(4)}${r.date ? `, date: ${r.date}` : ""})\n${r.excerpt}\n`
           )
           .join("\n---\n\n");
 
@@ -383,6 +419,7 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
 
     if (!ftsQuery) return [];
 
+    const t0 = Date.now();
     try {
       let sql = `
         SELECT c.file, c.content AS excerpt, c.date, rank AS score
@@ -411,13 +448,16 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
         score: number;
       }>();
 
-      return (results ?? []).map((r: { file: string; excerpt: string; date: string | null; score: number }) => ({
+      const mapped = (results ?? []).map((r: { file: string; excerpt: string; date: string | null; score: number }) => ({
         file: r.file,
         excerpt: r.excerpt.length > 400 ? r.excerpt.slice(0, 400) + "..." : r.excerpt,
         score: Math.abs(r.score),
         date: r.date ?? undefined,
       }));
-    } catch {
+      console.log(`[apperception] fts ms=${Date.now() - t0} rows=${mapped.length}`);
+      return mapped;
+    } catch (e: any) {
+      console.error(`[apperception] fts FAILED ms=${Date.now() - t0}`, e?.message ?? String(e));
       return [];
     }
   }
@@ -427,15 +467,22 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
     scope?: string[],
     limit = 10
   ): Promise<{ file: string; excerpt: string; score: number; date?: string }[]> {
+    const t0 = Date.now();
     try {
       // Generate embedding for the query
       const embeddingResponse = await this.env.AI.run(
         "@cf/baai/bge-base-en-v1.5",
         { text: [query] }
       ) as { data?: number[][] };
-      const queryVector = embeddingResponse.data![0];
+      const embedMs = Date.now() - t0;
+      const queryVector = embeddingResponse.data?.[0];
+      if (!queryVector) {
+        console.error(`[apperception] vec embed returned no data embed_ms=${embedMs}`);
+        return [];
+      }
 
       // Query Vectorize
+      const q0 = Date.now();
       const vectorResults = await this.env.VECTORIZE.query(queryVector, {
         topK: limit,
         returnMetadata: "all",
@@ -447,14 +494,18 @@ export class ApperceptionMCP extends McpAgent<Env, Record<string, never>, Props>
             }
           : {}),
       });
+      const queryMs = Date.now() - q0;
 
-      return vectorResults.matches.map((match: any) => ({
+      const mapped = vectorResults.matches.map((match: any) => ({
         file: (match.metadata?.file as string) ?? "unknown",
         excerpt: (match.metadata?.content as string)?.slice(0, 400) ?? "",
         score: match.score,
         date: (match.metadata?.date as string) ?? undefined,
       }));
-    } catch {
+      console.log(`[apperception] vec embed_ms=${embedMs} query_ms=${queryMs} matches=${mapped.length}`);
+      return mapped;
+    } catch (e: any) {
+      console.error(`[apperception] vec FAILED ms=${Date.now() - t0}`, e?.message ?? String(e));
       return [];
     }
   }

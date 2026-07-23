@@ -183,13 +183,22 @@ export class GitHubStorage {
   // Retrieval log — stored in .soul/retrievals.jsonl
 
   async appendRetrievalLog(entry: RetrievalLogEntry): Promise<void> {
+    const t0 = Date.now();
     try {
       await this.appendToFile(
         ".soul/retrievals.jsonl",
         JSON.stringify(entry) + "\n"
       );
-    } catch {
-      // Best-effort
+      // [instrumentation] Is this fire-and-forget GitHub read-modify-write the
+      // work cancelled at the 30s waitUntil limit under concurrency? Log its
+      // duration and the HTTP status on failure (409 = SHA conflict from a
+      // racing append; 403/429 = rate/secondary-limit backoff).
+      console.log(`[apperception] retrieval-log ok ms=${Date.now() - t0}`);
+    } catch (e: any) {
+      console.error(
+        `[apperception] retrieval-log FAILED ms=${Date.now() - t0} status=${e?.status ?? "?"}`,
+        e?.message ?? String(e)
+      );
     }
   }
 
