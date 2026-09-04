@@ -1,3 +1,9 @@
+# ⚠️ DEPRECATED — no longer supported
+
+This repository is archived and no longer maintained. No further development, fixes, or support.
+
+---
+
 # Apperception
 
 Persistent memory and identity for Claude across all surfaces — Code, Desktop, claude.ai web, and mobile.
